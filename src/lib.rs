@@ -2,6 +2,7 @@ use std::{
     future::Future,
     // marker::Unpin,
     task::{self, Poll},
+    pin::Pin,
 };
 
 use serde::{Serialize, Deserialize};
@@ -17,9 +18,9 @@ pub trait Message: Serialize + for<'de> Deserialize<'de> + Send {}
 
 /// This is the actor trait, but I wasn't sure if it ought to be called that.
 pub trait Process<M: Message> {
-    type Yield: Message;
-    type Error;
-    type Future: Future<Output = Result<Self::Yield, Self::Error>>;
+    type Response: Message;
+    type Error: Message; // TODO: + std::error::Error?
+    type Future: Future<Output = Result<Self::Response, Self::Error>>;
 
     /// Returns `Ready` once this actor is ready to receive a message.
     ///
@@ -32,16 +33,26 @@ pub trait Process<M: Message> {
 
 /// A reference to a local or remote actor.
 pub trait Ref<A> {
-    fn send<M>(&mut self, msg: M) -> SendFuture<<A as Process<M>>::Yield, <A as Process<M>::Error>>
+    fn send<M>(&mut self, msg: M) -> SendFuture<<A as Process<M>>::Response, <A as Process<M>::Error>>
     where
         A: Process<M>,
         M: Message;
 }
 
-pub struct SendFuture<I, E> {
+pub struct SendFuture<A, M> {
     // TODO
-    _p: std::marker::PhantomData<(I, E)>,
+    _p: std::marker::PhantomData<fn(A, M)>,
 }
 
+impl<A, M> Future for SendFuture<A, M>
+where
+    A: Process<M>,
+    M: Message,
+{
+    type Output = Result<A::Response, A::Error>;
+    fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
+        unimplemented!()
+    }
+}
 
 impl<M> Message for M where M: Serialize + for<'de> Deserialize<'de> + Send {}
