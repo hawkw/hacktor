@@ -1,11 +1,10 @@
-use crate::{Message, rt};
+use crate::{rt, Message};
 use std::{
     future::Future,
+    pin::Pin,
     // marker::Unpin,
     task::{self, Poll},
-    pin::Pin,
 };
-
 
 /// This is the actor trait, but I wasn't sure if it ought to be called that.
 pub trait Process<M: Message> {
@@ -16,10 +15,10 @@ pub trait Process<M: Message> {
     /// Returns `Ready` once this actor is ready to receive a message.
     ///
     /// Otherwise, backpressure will be exerted.
-    fn poll_ready(&mut self, ctx: &mut rt::Context<'_>) -> Poll<Result<(), Self::Error>>;
+    fn poll_ready(&mut self, cx: &mut rt::Context<'_>) -> Poll<Result<(), Self::Error>>;
 
     /// Handles a message, returning a future.
-    fn recv(&mut self, message: M, ctx: &mut rt::Context<'_>) -> Self::Future;
+    fn recv(&mut self, message: M, cx: &mut rt::Context<'_>) -> Self::Future;
 }
 
 /// A reference to a local or remote actor.
@@ -28,6 +27,18 @@ pub trait Ref<A> {
     where
         A: Process<M>,
         M: Message;
+
+    fn poll_ready<M>(&mut self) -> Poll<Result<(), A::Error>>
+    where
+        A: Process<M>,
+        M: Message;
+}
+
+/// Configuration for a process
+#[derive(Clone, Debug)]
+pub struct Settings {
+    pub(crate) max_in_flight: usize,
+    pub(crate) inbox_size: usize,
 }
 
 pub struct SendFuture<A, M> {
